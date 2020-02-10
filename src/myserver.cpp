@@ -4,6 +4,7 @@
 #include <ESPAsyncTCP.h>
 #include <ESPAsyncWebServer.h>
 #include <ESP8266WiFi.h>
+#include <ArduinoJson.h>
 
 
 const char* PARAM_SSID = "ssid";
@@ -24,7 +25,7 @@ const char index_html[] PROGMEM = R"rawliteral(
   <hr>
 
   <H2>WIFI Config</H2><br>
-  <form action="/get">
+  <form action="/config">
     WIFI AP SSID:&nbsp <input type="text" name="ssid"><br>
     WIFI PWD:&nbsp <input type="text" name="pwd"><br><br>
     <H2>ON/OFF Config</H2><br>
@@ -38,46 +39,85 @@ void notFound(AsyncWebServerRequest *request) {
   request->send(404, "text/plain", "Not found");
 }
 
+String getConfigJson() {
+  String data = getDeviceID();
+  Config cfg = loadConfig();
+
+  DynamicJsonDocument doc(256);
+  JsonObject obj = doc.to<JsonObject>();
+
+  obj["deviceId"] = data;
+  obj["ssid"] = cfg.ssid;
+  obj["pwd"] = cfg.pwd;
+  obj["version"] = getOSVersion();
+  obj["on_time"] = cfg.on;
+  obj["off_time"] = cfg.off;
+
+  char output[256];
+  serializeJson(obj, output);
+  Serial.println(output);
+        
+  return output;
+}
+
 void startServer() {
     server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
         request->send_P(200, "text/html", index_html);
     });
 
     server.on("/info", HTTP_GET, [](AsyncWebServerRequest *request) {
-        String wif = WiFi.localIP().toString();
 
         request->send(200, "text/html", 
           "Unit connected to: " + WiFi.SSID() +
           "<br>Unit IP: " + WiFi.localIP().toString()
         );
     });
-    
-    server.on("/unitid", HTTP_GET, [](AsyncWebServerRequest *request) {
-        String data = getDeviceID();
-        // txt.toCharArray(data, txt.length() +1);
-        request->send(200, "text/html", "{ \"data\" :\"" + data +"\"}" );
-    });
 
     server.on("/reset", HTTP_GET, [](AsyncWebServerRequest *request) {
         // todo reset ESP from here...
+        request->send_P(200, "text/html", "Restarting...");
+        delay(1000);
+        ESP.restart();
     });
 
-    server.on("/get", HTTP_GET, [] (AsyncWebServerRequest *request) {
+    server.on("/unit", HTTP_GET, [](AsyncWebServerRequest *request) {
+        String data = getDeviceID();
+        DynamicJsonDocument doc(256);
+        JsonObject obj = doc.to<JsonObject>();
+
+        obj["deviceId"] = data;
+        obj["ssid"] = WiFi.SSID();
+        obj["ip"] = WiFi.localIP().toString();
+        obj["version"] = getOSVersion();
+        
+        char output[256];
+        serializeJson(obj, output);
+        Serial.println(output);
+        
+        request->send_P(200, "text/json",  output);
+    });
+
+    server.on("/getc", HTTP_GET, [] (AsyncWebServerRequest *request) {
+      request->send(200, "text/json", getConfigJson());
+    });
+
+    server.on("/config", HTTP_GET, [] (AsyncWebServerRequest *request) {
         String inputMessage;
         String inputParam;
         // GET input1 value on <ESP_IP>/get?input1=<inputMessage>
+        bool newconfig = false;
         if (request->hasParam(PARAM_SSID)) {
             inputMessage = request->getParam(PARAM_SSID)->value();
             inputParam = PARAM_SSID;
             inputMessage.toCharArray(cfg.ssid, 20);
-            // saveSSID(inputMessage);
+            newconfig = true;
         }
 
         if (request->hasParam(PARAM_PWD)) {
             inputMessage = request->getParam(PARAM_PWD)->value();
             inputParam = PARAM_PWD;
             inputMessage.toCharArray(cfg.pwd, 20);
-            // savePWD(inputMessage);
+            newconfig = true;
         }
         
         if (request->hasParam(PARAM_ON)) {
@@ -85,16 +125,20 @@ void startServer() {
             inputParam = PARAM_ON;
             cfg.on = inputMessage.toInt();
             // saveONTime(inputMessage);
+            newconfig = true;
         }
 
         if (request->hasParam(PARAM_OFF)) {
             inputMessage = request->getParam(PARAM_OFF)->value();
             inputParam = PARAM_OFF;
             cfg.off = inputMessage.toInt();
-            // saveOFFTime(inputMessage);
+            newconfig = true;
         }
-        saveConfig(cfg);
-        request->send(200, "text/html", "{\"message\" : \"SUCCESS\" }");
+        if (newconfig) {
+          saveConfig(cfg);
+        }
+
+        request->send(200, "text/json", "sukses");
     });
     server.onNotFound(notFound);
     server.begin();

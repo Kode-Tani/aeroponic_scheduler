@@ -40,3 +40,7 @@ Config loadConfig() {
     EEPROM.get(addr, cfg);
     return cfg;
 }
+
+String getOSVersion() {
+    return OS_VERSION;
+}
