@@ -5,8 +5,8 @@
 #define OS_VERSION "v0.1"
 
 struct Config {
-    char ssid[20] = {NULL};
-    char pwd[20] = {NULL};
+    char ssid[20] = { NULL };
+    char pwd[20] = { NULL };
     int on = -1;
     int off = -1;
 };
